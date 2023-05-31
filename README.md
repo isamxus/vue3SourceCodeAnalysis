@@ -1,4 +1,4 @@
-# Vue3源码分析
+# Vue3源码分析(Vue版本为3.2.41)
 >## 一、响应式核心
 >>### 1.数据代理--Proxy
 >>> ### effect和数据的关系：
@@ -49,3 +49,22 @@
 ```
 >>> * 至此，设置响应式数据的大致逻辑已经梳理完，下面是该逻辑粗略的流程图：
 ![响应式数据建立流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/dd67c1872f22e5cac7a112965236d4f8aa99ca88/dataProxy.png)
+>>> ### 部分分支逻辑：
+>>> * track方法中，数据只有在当前用effect正在执行时，才会和effect建立映射关系：
+```typescript
+        export function triggerEffects(deps) {
+            if (shouldTrack && activeEffect) { // activeEffect指的就是当前运行中的effect
+                /** effect收集逻辑... */
+            }
+        }
+```
+>>> * 当数据更新，收集到的effect再次运行时，数据不会再对该effect进行收集，因为effect已经存在于该数据的effect集合里：
+```typescript
+        export function trackEffects(dep) {
+            let shouldTrack = false;
+            shouldTrack = !dep.has(activeEffect!) // 已经再集合中存在执行中的effect，所以不会再走下面判断体
+            if (shouldTrack) {
+                dep.add(activeEffect!)
+            }
+        }
+```
