@@ -48,4 +48,4 @@
         }
 ```
 >>> * 至此，设置响应式数据的大致逻辑已经梳理完，下面是该逻辑粗略的流程图：
-![响应式数据建立流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/3edfc94139f83d92e755777c5fed2e39f47abe4d/dataProxy.png)
+![响应式数据建立流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/dd67c1872f22e5cac7a112965236d4f8aa99ca88/dataProxy.png)
