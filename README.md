@@ -11,7 +11,6 @@
 >>> * 在对数据进行get拦截操作时，会执行一个关键方法track，该方法主要是设置被代理对象中每个属性(即数据)对应的effect集合，当访问到某个具体属性时，获取对应的effect集合并传入下一个关键方法trackEffects中，下面是简化逻辑后的的代码：
 ```typescript
         const targetMap = new WeakMap(); 
-
         export function track(target: object, key: unknown) {
             let depsMap = targetMap.get(target)
             if (!depsMap) { 
@@ -68,3 +67,53 @@
             }
         }
 ```
+>>### 2.reactive的实现原理
+>>> * reactive是Vue3中常用的API之一，主要是将复杂引用类型的值(对象，数组等)进行Proxy代理，并使其具备响应式特性，下面是简化逻辑后的reactive方法：
+```typescript
+        export function reactive(target: object) {
+            return createReactiveObject(
+                target, // 要进行Proxy代理的对象
+                baseHandlers // 该参数定义了Proxy的get和set拦截钩子
+            )
+        }
+```
+>>> * 在前文已经提到过Proxy代理的大致流程，在源码中，createReactiveObject方法就是进行代理的核心方法，代理后的对象会被存进一个Map容器里，如果要进行reactive的对象已经被代理过的并且代理对象已经在容器中，则直接返回该代理对象，下面是简化逻辑后的代码：
+```typescript
+        const proxyMap = new Map();
+        export function createReactiveObject(target: object, baseHandlers:ProxyHandler<any>) {
+            const existingProxy = proxyMap.get(target)
+            if (existingProxy) {
+                return existingProxy
+            }
+            const proxy = new Proxy(
+                target,
+                baseHandlers
+            )
+            proxyMap.set(target, proxy) // 缓存代理对象
+            return proxy;
+        }
+```
+>>> * 对于reactive来说，这里相比较Vue2的Object.defineProperty对于复杂嵌套对象的处理，Vue3做了一点优化，在触发拦截钩子get的时候，只有访问到嵌套对象里具体的对象属性的时候，才会对该对象进行Proxy代理，而在Vue2中，复杂对象会一直递归处理，直到对象内所有的对象属性都设置为响应式，下面是get钩子方法的简化逻辑：
+```typescript
+        new Proxy(target, {
+            get(target, key){
+                const res = Reflect.get(target, key, receiver) // 访问原始对象的属性，得到属性值
+                track(target, key) // 开始收集effect，大致流程前文a已经梳理过
+                if (isObject(res)) { // 如果属性值是对象，才会对该对象进行代理，而不是一开始就对原始对象进行递归代理
+                    return reactive(res)
+                }
+                return res;
+            }
+        })
+```
+>>> * 同样，通过reactive代理的对象，在对象的属性值发生变化时，会触发set钩子方法，依次执行收集过的effect，下面是set钩子方法的简化逻辑：
+```typescript
+        new Proxy(target, {
+            set(target, key, value){
+                const result = Reflect.set(target, key, value, receiver) // 设置原始对象的属性值
+                trigger(target, key, value) // 收集的effect依次执行，大致流程前文已经梳理过
+                return result;
+            }
+        })
+```
+>>> * reactive只是Vue3中其中一个进行数据代理的API,接下来将会梳理更多类似的API以及响应式核心的其他分支逻辑。
