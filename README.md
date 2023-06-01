@@ -116,4 +116,6 @@
             }
         })
 ```
->>> * reactive只是Vue3中其中一个进行数据代理的API,接下来将会梳理更多类似的API以及响应式核心的其他分支逻辑。
+>>> * reactive只是Vue3中其中一个进行数据代理的API,接下来将会梳理更多类似的API以及响应式核心的其他分支逻辑，下面是reactive实现的大致流程图：
+![响应式数据建立流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/30504944abd2ff5f496ec6091ead5b456cc712ca/reactive.png)
+
