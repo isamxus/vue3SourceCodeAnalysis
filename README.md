@@ -117,5 +117,47 @@
         })
 ```
 >>> * reactive只是Vue3中其中一个进行数据代理的API,接下来将会梳理更多类似的API以及响应式核心的其他分支逻辑，下面是reactive实现的大致流程图：
-![响应式数据建立流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/30504944abd2ff5f496ec6091ead5b456cc712ca/reactive.png)
-
+![reactive实现流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/30504944abd2ff5f496ec6091ead5b456cc712ca/reactive.png)
+>>### 3.ref的实现原理
+>>> * ref同样是Vue3中常用的API之一，它主要用于基础类型的值的数据代理，但它的处理与reactive有所不同，下面是ref方法的简化逻辑：
+```typescript
+        export function ref(value?: unknown) {
+            return new RefImpl(value);
+        }
+```
+>>> * 从上面代码看到，ref的数据代理逻辑是通过核心类RefImpl来实现的，它改写了RefImpl实例属性value的getter，setter方法，只有通过.value来访问和修改属性类型的值，通过ref方法代理的数据才会具备响应式逻辑，ref并不会像reactive那样，对原始数据的代理对象进行缓存。
+>>> * 当访问value属性时会触发trackEffect的effect收集流程，同样，改变属性value的值时，会触发triggerEffect的effect运行流程，trackEffect流程和triggerEffect在前文已经梳理过，下面是RefImpl类的简化逻辑：
+```typescript
+        class RefImpl<T> {
+            private _value: T
+            private _rawValue: T
+            public dep?: Dep = new Set() // 建立ref实例与effect的映射，即收集effect
+            constructor(value: T) {
+                this._rawValue = value; // 记录原始的值，以便于出发setter方法时进行比较
+                this._value = typeof value === 'object' ? reactive(value) : value; // 传给ref的参数可以是复杂引用类型的值，这个值会使用reactive方法进行响应式处理并且将返回的代理对象赋值给_value，同样可以通过.value来访问这个代理对象
+            }
+            get value() {
+                trackEffect(this.dep) // 收集effect的流程，不再赘述
+                return this._value
+            }
+            set value(newVal) {
+                if (hasChanged(newVal, this._rawValue)) { // 比较新旧值，有变化才走下面逻辑
+                    this._rawValue = newVal 
+                    this._value = typeof value === 'object' ? reactive(value) : value;
+                    triggerEffect(this.dep) // 触发effect的流程，不再赘述
+                }
+            }
+        }
+```
+>>> * 根据我的使用经验，除了基础类型的值适合使用ref外，有一种情况同样适合使用ref，代码如下：
+```typescript
+        let proxy = reactive({}); // 如果有effect使用到proxy访问原始的对象，由于数据代理只会代理原始对象内的属性，而原始对象本身并不会被代理，所以并不会对运行中的effect进行收集
+        proxy = {}; // 由于没有收集effect，改变proxy的值并不会触发effect的运行
+```
+>>> * 那么，如果我们想proxy也参与到收集和触发effect的逻辑中，可以这样做：
+```typescript
+        let proxy = ref({}); // 如果有effect使用到proxy，则要通过proxy.value访问原始对象，根据前文RefImpl类中value属性的getter方法逻辑，将会触发trackEffect的流程收集当前运行的effect
+        proxy.value = {}; // 改变proxy.value的值，会依次执行收集到的effect
+```
+>>> * ref并不通过Proxy代理，它通过RefImpl类的处理通过属性value代理到原始数据上，这也是与reactive不同的地方，下面是ref的大致流程图：
+![ref实现流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/c7785df02e775837adc18201e3babd68fd5e23d1/ref.png)
