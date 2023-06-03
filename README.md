@@ -196,3 +196,4 @@
         }
 ```
 >>> * 至此，对effect的作用有了一个大致的了解，当然effect方法和ReactiveEffect类还有很多分支逻辑，在后面的响应式API中还会进行渗透，梳理，下面是effect的大致流程图：
+![effect实现流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/4b9fd490efbf9255116371ee86f8681d78cf81a1/effect.png)
