@@ -161,3 +161,38 @@
 ```
 >>> * ref并不通过Proxy代理，它通过RefImpl类的处理通过属性value代理到原始数据上，这也是与reactive不同的地方，下面是ref的大致流程图：
 ![ref实现流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/c7785df02e775837adc18201e3babd68fd5e23d1/ref.png)
+>>### 4.effect的实现原理
+>>> * effect是Vue3中非常重要的一个API，无论是组件渲染和更新，还是自定义watch，computed的运作都离不开effect，如果看完前文大家对effect可能会有点概念了，它就是贯穿整个Vue3运作的API，effect方法第一个参数接收一个回调函数，该函数在响应式数据更新的时候会执行，下面是effect方法的简化逻辑：
+```typescript
+        export function effect<T = any>(fn: () => T){
+            const _effect = new ReactiveEffect(fn)
+            _effect.run()
+        }
+```
+>>> * 从上面代码可以看到，effect的具体逻辑都封装在ReactiveEffect核心类中，这个类在实例化后，会马上执行实例的run方法(watch和computed等API情况除外)，这里先说一个很关键的变量activeEffect，这个变量用来记录当前正在运行的effect，这样响应式数据就能够知道当前运行中的effect是哪个，从而进行effect的收集，下面ReactiveEffect类的简化逻辑：
+```typescript
+        export let activeEffect = null; // 该变量记录当前哪个effect在运行
+        export class ReactiveEffect<T = any> {
+            constructor(public fn: () => T){} // fn就是我们使用effect时传入的回调函数
+            run(){
+                activeEffect = this // 将activeEffect指向当前ReactiveEffect实例
+                this.fn() // 执行回调，在回调中如果访问到响应式数据，那么这些响应式数据就会建立起和当前ReactiveEffect实例的联系
+                activeEffect = null // 执行完回调后，将activeEffect置空
+            }
+        }
+```
+>>> * 看完上面代码，前文提到过effect执行，就是执行effect.run方法触发回调函数的运行，那么回调函数运行时，如果访问到响应式数据，就会触发trackEffects方法，每个响应式数据的dep就会收集这个运行中的effect，回顾一下trackEffects方法：
+```typescript
+        export function trackEffects(dep: Dep) {
+            dep.add(activeEffect!) // activeEffect指的就是当前运行中的effect，dep就是track方法中传入的集合
+        }
+```
+>>> * 当响应式数据发生变化时，则通知dep收集到的effect运行，这里的effect就是ReactiveEffect实例，它会调用实例的run方法完成数据变更后的逻辑，回顾一下triggerEffects方法：
+```typescript
+        export function triggerEffects(deps) {
+            for (const effect of deps) {
+                effect.run(); // 依次执行数据收集到的effect
+            }
+        }
+```
+>>> * 至此，对effect的作用有了一个大致的了解，当然effect方法和ReactiveEffect类还有很多分支逻辑，在后面的响应式API中还会进行渗透，梳理，下面是effect的大致流程图：
