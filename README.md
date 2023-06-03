@@ -197,3 +197,80 @@
 ```
 >>> * 至此，对effect的作用有了一个大致的了解，当然effect方法和ReactiveEffect类还有很多分支逻辑，在后面的响应式API中还会进行渗透，梳理，下面是effect的大致流程图：
 ![effect实现流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/4b9fd490efbf9255116371ee86f8681d78cf81a1/effect.png)
+>>### 5.computed的实现原理
+>>> * computed的实现和前文提到的ReactiveEffect息息相关，在梳理ReactiveEffect类的时候，构造函数的参数省略了第二个参数，这个参数是一个scheduler调度器，这个调度器在响应式数据更新的时候会运行，而不是执行ReactiveEffect实例的run方法。
+```typescript
+        export class ReactiveEffect<T = any> {
+            constructor(
+                public fn: () => T,
+                public scheduler: EffectScheduler | null = null, // 调度器
+            ) {
+                /**... */
+            }
+        }
+```
+>>> * computed方法的第一个参数可以是一个回调函数，也可是一个带有get，set方法的对象，下面是简化后的逻辑：
+```typescript
+        export function computed<T>(getterOrOptions: ComputedGetter<T> | WritableComputedOptions<T>){
+            let getter: ComputedGetter<T>
+            let setter: ComputedSetter<T>
+            typeof getterOrOptions === 'function' 
+                ? (getter = getterOrOptions, setter = () => {}) // 如果传入参数类型是函数
+                : (getter = getterOrOptions.get, setter = getterOrOptions.set); // 如果传入参数类型是带有get，set方法的对象
+            const cRef = new ComputedRefImpl(getter, setter)
+             return cRef;
+        }
+```
+>>> * 从上面代码可以看到，computed处理产生getter，setter两个函数作为参数传入到核心类ComputedRefImpl构造函数，返回ComputedRefImpl实例，通过computed定义的数据依赖于getter函数的返回值，需要通过.value来访问。
+>>> * ComputedRefImpl类内部通过定义value属性的get，set方法来完成响应式逻辑，这与ref实现类似，ComputedRefImpl实例在构造时会调用前文提到的ReactiveEffect类产生一个effect实例，传入ReactiveEffect实例的第一个参数是getter函数，重点是第二个参数，它是一个调度器，下面是ComputedRefImpl类的简化逻辑：
+```typescript
+        export class ComputedRefImpl<T> {
+            private _value!: T // 记录getter函数执行后的返回值
+            public readonly effect: ReactiveEffect<T> // 与ReactiveEffect实例关联
+            public dep?: Dep = [] // 收集使用到这个computed数据的effect
+            public _dirty = true // getter函数在函数依赖的响应式数据未更新时只会计算一次值
+            constructor(getter: ComputedGetter<T>, private readonly _setter: ComputedSetter<T>) {
+                this.effect = new ReactiveEffect(getter, () => { // ComputedRefImpl与ReactiveEffect实例关联起来
+                    if (!this._dirty) {
+                        this._dirty = true
+                        triggerEffects(this.dep)
+                    }
+                })
+            }
+            get value() {
+                trackEffects(this.dep) // 当访问这个computed定义的数据时，这个数据将收集当前正在运行的effect
+                if (this._dirty) {
+                    this._dirty = false
+                    this._value = this.effect.run() // 计算getter函数的返回值，此时如果getter函数依赖其他响应式数据，那么其他响应式数据的dep就会收集这个ComputedRefImpl实例关联的effect
+                }
+                return this._value // 将getter计算后的值返回
+            }
+            set value(newValue: T) {
+                this._setter(newValue)
+            }
+        }
+```
+>>> * 当我们通过.value访问computed定义的数据时，这个数据会先收集当前正在运行的effect，然后才触发getter函数的执行。
+>>> * getter函数内可能要访问多个响应式数据才能计算它的返回值，当访问这些响应式数据时，这些响应式数据的dep会收集computed方法产生ComputedRefImpl实例关联的effect。
+>>> * 第一次访问computed定义的数据，getter函数会执行一次，但是getter函数内依赖的多个响应式数据在没有更新的情况下，无论后续多少次访问computed定义的数据，getter都不会执行，访问到的都是第一次计算后的值，这有利于性能提升。
+>>> * 当getter函数依赖的响应式数据更新时，这些数据的dep收集的effect(computedRefImpl实例关联)，通过triggerEffect执行，但这个effect不是执行run方法，而是执行ReactiveEffect实例创建的时传入的调度器：
+```typescript
+        function triggerEffect(effect: ReactiveEffect) {
+            if (effect.scheduler) { // 前文省略了这个逻辑
+                effect.scheduler()
+            } else {
+                effect.run()
+            }
+        }
+```
+>>> * 来看看这个调度器做了什么：
+```typescript
+        () => {
+            if (!this._dirty) { 
+                this._dirty = true // 第一次计算getter函数的返回值会将_dirty置为false，此时由于getter函数依赖的数据改变，这里要给它置为true，下一次访问computed定义的数据时才会重新计算getter函数的返回值
+                triggerEffects(this.dep) // 通知compted定义的数据收集的effect执行
+            }
+        }
+```
+>>> * 下面是computed实现的大致流程图：
+![computed实现流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/55ec895ad71998b3edaf07d29d45fad768c751fb/computed.png)
