@@ -274,3 +274,24 @@
 ```
 >>> * 下面是computed实现的大致流程图：
 ![computed实现流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/55ec895ad71998b3edaf07d29d45fad768c751fb/computed.png)
+>>### 6.watch的实现原理
+>>> * watch用于监听数据的变化，并在数据变化后执行某些逻辑，watch的实现也与ReactiveEffect类相关，跟computed一样，在创建ReactiveEffect类实例时，同样会传入一个调度器。
+>>> * watch的第一个参数是需要监听的响应式数据，在watch内部会处理成函数调用的形式返回这个数据，watch的第二个参数是的监听的数据变化后的回调，这个回调默认情况下是异步触发的，watch的第三个参数是一个配置对象，可以指定回调的执行时机，监听的数据是否深度监听等等。
+>>> * 在watch创建时会把传入的要监听的数据包装成一个getter函数，并创建一个effect，默认执行一次effect.run方法，effect.run方法执行的就是这个getter，getter函数会访问具体的响应式数据，并当作旧值储存，此时响应式数据的dep就会收集这个watch方法创建的effect。
+>>> * 在要监听的响应式数据更新时，收集到的effect会执行创建ReactiveEffect类实例时传入的调度器，这个调度器内部会再执行一次getter方法拿到最新的数据，然后默认会异步执行watch方法传入的回调，将新值和旧值作为参数传入回调中。
+>>> * 下面是watch的简化逻辑：
+```typescript
+        export function watch(getter, cb){
+            const scheduler = () => {
+                const newValue = effect.run(); // 执行getter，拿到新值
+                if (oldValue === newValue) return; // 旧值和新值一样就不会触发回调
+                Promise.resolve().then(() => cb(newValue, oldValue)) // 异步执行watch方法的传入的回调
+                oldValue = newValue; /// 更新旧值，下次响应式数据更新时与新值比较
+            }
+            const effect = new ReactiveEffect(getter, scheduler) // 创建一个effect，将getter和调度器scheduler传入
+            let oldValue = effect.run() // 先执行一次getter，拿到要监听的数据，作为旧值
+        }
+```
+>>> * 从上面代码可以看出，watch的实现逻辑比computed稍微简单一点，就是在创建effect的时候，马上执行run方法通过getter函数访问响应式数据，响应式数据收集effect，当响应式数据更新，执行effect的调度器，调度器内部实际上就是执行传入的回调。
+>>> * 下面是watch方法实现的大致流程图：
+![watch实现流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/573b5626a417543ac4cbee14d6ff61c301cb5ddd/watch.png)
