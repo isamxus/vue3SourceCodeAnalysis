@@ -295,3 +295,16 @@
 >>> * 从上面代码可以看出，watch的实现逻辑比computed稍微简单一点，就是在创建effect的时候，马上执行run方法通过getter函数访问响应式数据，响应式数据收集effect，当响应式数据更新，执行effect的调度器，调度器内部实际上就是执行传入的回调。
 >>> * 下面是watch方法实现的大致流程图：
 ![watch实现流程](https://github.com/isamxus/vue3SourceCodeAnalysis/blob/573b5626a417543ac4cbee14d6ff61c301cb5ddd/watch.png)
+>>### 7.watchEffect的实现原理
+>>> * watchEffect的实现比较简单，第一个参数接收一个函数getter，当调用watcEffect时，同样会ReactiveEffect类，将getter和调度器scheduler传入创建一个effect，然后调用effect.run，getter执行，getter函数内部访问到的响应式数据会收集这个effect。数据改变，effect的调度器执行。
+>>> * watchEffect和watch的调度器实现逻辑不同，watch是监听数据变化并在数据变化后执行传入的回调cb，而watchEffect是没有这个回调的，它在数据变化后执行的依然是传入的getter函数。下面是watchEffect的简化逻辑：
+```typescript
+        export function watchEffect(getter){
+            const scheduler = () => {
+                effect.run() // getter内部访问到的响应式数据更新时，调度器内部执行的依旧是传入的getter
+            }
+            const effect = new ReactiveEffect(getter, scheduler) // 创建一个effect，将getter和调度器scheduler传入
+            effect.run() // 先执行一次getter，getter内部访问到响应式数据时会对这个effect进行收集
+        }
+```
+>>> * watchEffect其实就是封装了effect方法，它还有一些额外的配置选项，主要用于响应式数据更新后马上执行某个操作。
